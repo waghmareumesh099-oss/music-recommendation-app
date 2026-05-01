@@ -5,7 +5,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 st.title("🎵 Music Recommendation System")
 
 # Load dataset from CSV
-data = pd.read_csv("ex.csv")
+data = pd.read_csv("ex(1).csv")
 
 # Create user-song matrix
 user_song_matrix = data.pivot_table(

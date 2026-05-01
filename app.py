@@ -1,36 +1,54 @@
 import streamlit as st
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
+import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
 
-client_id = "YOUR_CLIENT_ID"
-client_secret = "YOUR_CLIENT_SECRET"
+st.title("🎵 Music Recommendation System")
 
-auth_manager = SpotifyClientCredentials(client_id=client_id,
-                                         client_secret=client_secret)
-sp = spotipy.Spotify(auth_manager=auth_manager)
+# Load dataset from CSV
+data = pd.read_csv("ex.csv")
 
-def recommend_songs(query):
-    results = sp.search(q=query, type="track", limit=5)
-    
-    recommendations = []
-    
-    for track in results['tracks']['items']:
-        artist = track['artists'][0]['name']
-        more_tracks = sp.search(q=artist, type="track", limit=5)
-        
-        for t in more_tracks['tracks']['items']:
-            recommendations.append(t['name'] + " - " + t['artists'][0]['name'])
-    
-    return list(set(recommendations))[:5]
+# Create user-song matrix
+user_song_matrix = data.pivot_table(
+    index='user_id',
+    columns='song',
+    values='rating'
+).fillna(0)
 
-st.title("🎵 Spotify Music Recommendation System")
+# Compute similarity
+user_similarity = cosine_similarity(user_song_matrix)
 
-user_input = st.text_input("Enter song or artist:")
+similarity_df = pd.DataFrame(
+    user_similarity,
+    index=user_song_matrix.index,
+    columns=user_song_matrix.index
+)
+
+# Recommendation function
+def recommend_songs(user_id, n=5):
+    similar_users = similarity_df[user_id].sort_values(ascending=False)[1:]
+
+    user_data = user_song_matrix.loc[user_id]
+    unseen_songs = user_data[user_data == 0].index
+
+    scores = {}
+
+    for song in unseen_songs:
+        score = 0
+        for other_user in similar_users.index:
+            score += similarity_df[user_id][other_user] * user_song_matrix.loc[other_user][song]
+        scores[song] = score
+
+    recommended = sorted(scores, key=scores.get, reverse=True)
+    return recommended[:n]
+
+selected_user = st.selectbox(
+    "Select User ID",
+    user_song_matrix.index
+)
 
 if st.button("Recommend Songs"):
-    if user_input:
-        songs = recommend_songs(user_input)
-        for song in songs:
-            st.write("🎶", song)
-    else:
-        st.write("Please enter something!")
+    recommendations = recommend_songs(selected_user)
+
+    st.subheader("Recommended Songs:")
+    for song in recommendations:
+        st.write("🎶", song)

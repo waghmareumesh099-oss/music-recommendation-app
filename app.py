@@ -1,57 +1,54 @@
 import gradio as gr
 import pandas as pd
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Load dataset
 data = pd.read_csv("ex.csv")
 
-# Create user-song matrix
-user_song_matrix = data.pivot_table(
-    index='user_id',
-    columns='song',
-    values='rating'
-).fillna(0)
+# Clean rating column
+data["User-Rating"] = data["User-Rating"].str.replace("/10", "").astype(float)
 
-# Compute similarity
-user_similarity = cosine_similarity(user_song_matrix)
+# Combine features
+data["combined_features"] = (
+    data["Genre"] + " " +
+    data["Singer/Artists"] + " " +
+    data["Album/Movie"]
+)
 
-def recommend_songs(user_id):
-    user_index = list(user_song_matrix.index).index(int(user_id))
-    similarities = user_similarity[user_index]
+# Vectorize text
+vectorizer = CountVectorizer()
+feature_matrix = vectorizer.fit_transform(data["combined_features"])
 
-    similar_users = sorted(
-        list(enumerate(similarities)),
-        key=lambda x: x[1],
-        reverse=True
-    )[1:]
+# Similarity matrix
+similarity = cosine_similarity(feature_matrix)
 
-    seen_songs = set(
-        data[data['user_id'] == int(user_id)]['song']
-    )
+# Recommendation function
+def recommend(song_name):
+    if song_name not in data["Song-Name"].values:
+        return "Song not found in dataset."
+
+    idx = data[data["Song-Name"] == song_name].index[0]
+
+    similar_songs = list(enumerate(similarity[idx]))
+    sorted_songs = sorted(similar_songs, key=lambda x: x[1], reverse=True)[1:6]
 
     recommendations = []
 
-    for sim_user, _ in similar_users:
-        songs = data[data['user_id'] == user_song_matrix.index[sim_user]]['song']
-        for song in songs:
-            if song not in seen_songs and song not in recommendations:
-                recommendations.append(song)
-
-            if len(recommendations) == 5:
-                return "\n".join(recommendations)
+    for i in sorted_songs:
+        recommendations.append(data.iloc[i[0]]["Song-Name"])
 
     return "\n".join(recommendations)
 
+# Gradio Interface
 demo = gr.Interface(
-    fn=recommend_songs,
+    fn=recommend,
     inputs=gr.Dropdown(
-        choices=list(user_song_matrix.index),
-        label="Select User ID"
+        choices=sorted(data["Song-Name"].unique().tolist()),
+        label="Select Song"
     ),
     outputs=gr.Textbox(label="Recommended Songs"),
     title="Music Recommendation System"
 )
 
 demo.launch()
-
-

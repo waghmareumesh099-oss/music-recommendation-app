@@ -1,11 +1,9 @@
-import streamlit as st
+import gradio as gr
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
-st.title("🎵 Music Recommendation System")
-
-# Load dataset from CSV
-data = pd.read_csv("ex(1).csv")
+# Load dataset
+data = pd.read_csv("ex.csv")
 
 # Create user-song matrix
 user_song_matrix = data.pivot_table(
@@ -17,38 +15,43 @@ user_song_matrix = data.pivot_table(
 # Compute similarity
 user_similarity = cosine_similarity(user_song_matrix)
 
-similarity_df = pd.DataFrame(
-    user_similarity,
-    index=user_song_matrix.index,
-    columns=user_song_matrix.index
+def recommend_songs(user_id):
+    user_index = list(user_song_matrix.index).index(int(user_id))
+    similarities = user_similarity[user_index]
+
+    similar_users = sorted(
+        list(enumerate(similarities)),
+        key=lambda x: x[1],
+        reverse=True
+    )[1:]
+
+    seen_songs = set(
+        data[data['user_id'] == int(user_id)]['song']
+    )
+
+    recommendations = []
+
+    for sim_user, _ in similar_users:
+        songs = data[data['user_id'] == user_song_matrix.index[sim_user]]['song']
+        for song in songs:
+            if song not in seen_songs and song not in recommendations:
+                recommendations.append(song)
+
+            if len(recommendations) == 5:
+                return "\n".join(recommendations)
+
+    return "\n".join(recommendations)
+
+demo = gr.Interface(
+    fn=recommend_songs,
+    inputs=gr.Dropdown(
+        choices=list(user_song_matrix.index),
+        label="Select User ID"
+    ),
+    outputs=gr.Textbox(label="Recommended Songs"),
+    title="Music Recommendation System"
 )
 
-# Recommendation function
-def recommend_songs(user_id, n=5):
-    similar_users = similarity_df[user_id].sort_values(ascending=False)[1:]
+demo.launch()
 
-    user_data = user_song_matrix.loc[user_id]
-    unseen_songs = user_data[user_data == 0].index
 
-    scores = {}
-
-    for song in unseen_songs:
-        score = 0
-        for other_user in similar_users.index:
-            score += similarity_df[user_id][other_user] * user_song_matrix.loc[other_user][song]
-        scores[song] = score
-
-    recommended = sorted(scores, key=scores.get, reverse=True)
-    return recommended[:n]
-
-selected_user = st.selectbox(
-    "Select User ID",
-    user_song_matrix.index
-)
-
-if st.button("Recommend Songs"):
-    recommendations = recommend_songs(selected_user)
-
-    st.subheader("Recommended Songs:")
-    for song in recommendations:
-        st.write("🎶", song)
